@@ -111,7 +111,12 @@ ad_proc -private auth::ldap::get_user {
     foreach { attribute value } [lindex $search_result 0] {
         if { [string equal $attribute $element] } {
             # Values are always wrapped in an additional list
-            return [lindex $value 0]
+	    # not for dn (roc)
+            if [string equal $element "dn"] {
+		return $value
+	    } else {
+		return [lindex $value 0]
+	    }
         }
     }
     
