@@ -240,11 +240,39 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     # Default to failure
     set result(auth_status) auth_error
 
-    # Find the user
-    set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
+    
+    # LDAP bind based authentication ?
+    set ldap_bind_p 0
 
-    if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
-        set result(auth_status) ok
+    if {$ldap_bind_p==1} {
+
+	set cn $username
+
+	# The following code splits up the username, given in the form:
+	# user.sub-domain.domain 
+	# into the according ou statements. This is for demonstration purpose only
+
+	# set ldap_list [split $username "."]
+	# set ou_elements [lrange $ldap_list 0 [expr [llength $ldap_list] - 2]]
+	# set cn "[join $ou_elements ",ou="],o=[lindex $ldap_list end]" 
+	
+	set lh [ns_ldap gethandle]
+
+	if {[ns_ldap bind $lh "cn=$cn" "$password"]} {
+	    set result(auth_status) ok
+	}
+
+	ns_ldap disconnect $lh
+	ns_ldap releasehandle $lh
+
+    } else {
+
+	# Find the user
+	set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
+	
+	if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
+	    set result(auth_status) ok
+	}
     }
 
     # We do not check LDAP account status
