@@ -417,19 +417,29 @@ ad_proc -private auth::ldap::registration::Register {
         account_message {}
     }
 
-    set dn "uid=$username,$params(BaseDN)"
-    
+    set dn $params(DNPattern)
+    foreach var { username first_names last_name email screen_name url } {
+        regsub -all "{$var}" $dn [set $var] dn
+    }
+    append dn ",$params(BaseDN)"
+
     set attributes [list]
-    lappend attributes objectClass [list organizationalRole person uidObject]
-    lappend attributes uid $username
-    lappend attributes cn [list [list $first_names $last_name]]
-    lappend attributes sn $last_name
-    #lappend attributes gn $first_names
-    #lappend attributes mail $email
+    foreach elm [split $params(Attributes) ";"] {
+        set elmv [split $elm "="]
+        set attribute [string trim [lindex $elmv 0]]
+        set value [string trim [lindex $elmv 1]]
+
+        foreach var { username first_names last_name email screen_name url } {
+            regsub -all "{$var}" $value [set $var] value
+        }
+        # Note that this makes a list out of 'value' if it isn't already
+        lappend attributes $attribute $value
+    }
 
     # Create the account
     set lh [ns_ldap gethandle ldap]
     with_catch errmsg {
+        ns_log Notice "LDAP: Adding user: [concat ns_ldap add [list $lh] [list $dn] $attributes]"
         eval [concat ns_ldap add [list $lh] [list $dn] $attributes]
         ns_ldap releasehandle $lh
     } {
@@ -453,6 +463,8 @@ ad_proc -private auth::ldap::registration::GetParameters {} {
         BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
         UsernameAttribute "LDAP attribute to match username against, typically uid"
         PasswordHash "The hash to use when storing passwords. Supported values are MD5, SMD5, SHA, SSHA, and CRYPT."
+        DNPattern "Pattern for contructing the first part of the DN for new accounts. Will automatically get ',BaseDN' appended. {username}, {first_names}, {last_name}, {email}, {screen_name}, {url} will be expanded with their respective values. Example: 'uid={username}'."
+        Attributes "Attributes to assign in the new LDAP entry. The value should be a semicolon-separated list of the form 'attribute=value; attribute=value; ...'. {username}, {first_names}, {last_name}, {email}, {screen_name}, {url} will be expanded with their respective values. Example: 'objectClass=person organizationalPerson inetOrgPerson;uid={username};cn={{first_names} {last_name}};sn={last_name};givenName={first_names};mail={email}'."
     }
 }
 
