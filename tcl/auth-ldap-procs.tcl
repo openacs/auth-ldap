@@ -10,6 +10,7 @@ namespace eval auth {}
 namespace eval auth::ldap {}
 namespace eval auth::ldap::authentication {}
 namespace eval auth::ldap::password {}
+namespace eval auth::ldap::registration {}
 
 
 ad_proc -private auth::ldap::after_install {} {} {
@@ -43,6 +44,20 @@ ad_proc -private auth::ldap::after_install {} {} {
     }
 
     set pwd_impl_id [acs_sc::impl::new_from_spec -spec $spec]
+
+    set spec {
+        contract_name "auth_registration"
+        owner "ldap-auth"
+        name "LDAP"
+        pretty_name "LDAP"
+        aliases {
+            GetElements auth::ldap::registration::GetElements
+            Register auth::ldap::registration::Register
+            GetParameters auth::ldap::registration::GetParameters
+        }
+    }
+
+    set registration_impl_id [acs_sc::impl::new_from_spec -spec $spec]
 }
 
 ad_proc -private auth::ldap::before_uninstall {} {} {
@@ -51,6 +66,7 @@ ad_proc -private auth::ldap::before_uninstall {} {} {
 
     acs_sc::impl::delete -contract_name "auth_password" -impl_name "LDAP"
 
+    acs_sc::impl::delete -contract_name "auth_registration" -impl_name "LDAP"
 }
 
 ad_proc -private auth::ldap::get_user {
@@ -353,3 +369,90 @@ ad_proc -private auth::ldap::password::GetParameters {} {
         PasswordHash "The hash to use when storing passwords. Supported values are MD5, SMD5, SHA, SSHA, and CRYPT."
     }
 }
+
+
+
+#####
+#
+# Registration Driver
+#
+#####
+
+ad_proc -private auth::ldap::registration::GetElements {
+    {parameters ""}
+} {
+    Implements the GetElements operation of the auth_registration
+    service contract.
+} {
+    set result(required) { username email first_names last_name }
+    set result(optional) { password }
+
+    return [array get result]
+}
+
+ad_proc -private auth::ldap::registration::Register {
+    parameters
+    username
+    authority_id
+    first_names
+    last_name
+    screen_name
+    email
+    url
+    password
+    secret_question
+    secret_answer
+} {
+    Implements the Register operation of the auth_registration
+    service contract.
+} {
+    # Parameters
+    array set params $parameters
+
+    array set result {
+        creation_status "reg_error"
+        creation_message {}
+        element_messages {}
+        account_status "ok"
+        account_message {}
+    }
+
+    set dn "uid=$username,$params(BaseDN)"
+    
+    set attributes [list]
+    lappend attributes objectClass [list organizationalRole person uidObject]
+    lappend attributes uid $username
+    lappend attributes cn [list [list $first_names $last_name]]
+    lappend attributes sn $last_name
+    #lappend attributes gn $first_names
+    #lappend attributes mail $email
+
+    # Create the account
+    set lh [ns_ldap gethandle ldap]
+    with_catch errmsg {
+        eval [concat ns_ldap add [list $lh] [list $dn] $attributes]
+        ns_ldap releasehandle $lh
+    } {
+        ns_ldap releasehandle $lh
+        global errorInfo
+        error $errmsg $errorInfo
+    }
+
+    auth::ldap::set_password -dn $dn -new_password $password -parameters $parameters
+    
+    set result(creation_status) "ok"
+
+    return [array get result]
+}
+
+ad_proc -private auth::ldap::registration::GetParameters {} {
+    Implements the GetParameters operation of the auth_registration
+    service contract.
+} {
+    return {
+        BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
+        UsernameAttribute "LDAP attribute to match username against, typically uid"
+        PasswordHash "The hash to use when storing passwords. Supported values are MD5, SMD5, SHA, SSHA, and CRYPT."
+    }
+}
+

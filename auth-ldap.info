@@ -7,12 +7,13 @@
     <initial-install-p>f</initial-install-p>
     <singleton-p>t</singleton-p>
     
-    <version name="1.0d1" url="http://openacs.org/repository/download/apm/auth-ldap-1.0d1.apm">
+    <version name="1.0d2" url="http://openacs.org/repository/download/apm/auth-ldap-1.0d2.apm">
         <owner url="mailto:lars@collaboraid.biz">Lars Pind</owner>
         <summary>Provides authentication and related drivers for LDAP.</summary>
         <vendor url="http://www.collaboraid.biz">Collaboraid</vendor>
         <description format="text/html">Provides authentication, password management, and other drivers for LDAP.</description>
 
+        <provides url="auth-ldap" version="1.0d2"/>
         <requires url="acs-authentication" version="5.0d3"/>
 
         <callbacks>
