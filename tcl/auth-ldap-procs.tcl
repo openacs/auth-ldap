@@ -111,7 +111,12 @@ ad_proc -private auth::ldap::get_user {
     foreach { attribute value } [lindex $search_result 0] {
         if { [string equal $attribute $element] } {
             # Values are always wrapped in an additional list
-            return [lindex $value 0]
+	    # not for dn (roc)
+            if [string equal $element "dn"] {
+		return $value
+	    } else {
+		return [lindex $value 0]
+	    }
         }
     }
     
@@ -224,6 +229,7 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     username
     password
     {parameters {}}
+    {authority_id {}}
 } {
     Implements the Authenticate operation of the auth_authentication 
     service contract for LDAP.
@@ -296,6 +302,7 @@ ad_proc -private auth::ldap::password::ChangePassword {
     old_password
     new_password
     {parameters {}}
+    {authority_id {}}
 } {
     Implements the ChangePassword operation of the auth_password 
     service contract for LDAP.
@@ -351,6 +358,7 @@ ad_proc -private auth::ldap::password::RetrievePassword {
 ad_proc -private auth::ldap::password::ResetPassword {
     username
     parameters
+    {authority_id {}}
 } {
     Implements the ResetPassword operation of the auth_password 
     service contract for LDAP.
