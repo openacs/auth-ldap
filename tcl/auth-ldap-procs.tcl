@@ -11,7 +11,7 @@ namespace eval auth::ldap {}
 namespace eval auth::ldap::authentication {}
 namespace eval auth::ldap::password {}
 namespace eval auth::ldap::registration {}
-
+namespace eval auth::ldap::user_info {}
 
 ad_proc -private auth::ldap::after_install {} {} {
     set spec {
@@ -58,6 +58,19 @@ ad_proc -private auth::ldap::after_install {} {} {
     }
 
     set registration_impl_id [acs_sc::impl::new_from_spec -spec $spec]
+
+    set spec {
+        contract_name "auth_user_info"
+        owner "ldap-auth"
+        name "LDAP"
+        pretty_name "LDAP"
+        aliases {
+            GetUserInfo auth::ldap::user_info::GetUserInfo
+            GetParameters auth::ldap::user_info::GetParameters
+        }
+    }
+
+    set user_info_impl_id [acs_sc::impl::new_from_spec -spec $spec]
 }
 
 ad_proc -private auth::ldap::before_uninstall {} {} {
@@ -67,6 +80,8 @@ ad_proc -private auth::ldap::before_uninstall {} {} {
     acs_sc::impl::delete -contract_name "auth_password" -impl_name "LDAP"
 
     acs_sc::impl::delete -contract_name "auth_registration" -impl_name "LDAP"
+
+    acs_sc::impl::delete -contract_name "auth_user_info" -impl_name "LDAP"
 }
 
 ad_proc -private auth::ldap::get_user {
@@ -468,3 +483,74 @@ ad_proc -private auth::ldap::registration::GetParameters {} {
     }
 }
 
+
+
+#####
+#
+# On-Demand Sync Driver
+#
+#####
+
+ad_proc -private auth::ldap::user_info::GetUserInfo {
+    username
+    parameters
+} {
+
+} {
+    # Parameters
+    array set params $parameters
+
+    # Default result
+    array set result {
+        info_status "ok"
+        info_message {}
+        user_info {}
+    }
+
+    set search_result [auth::ldap::get_user \
+                           -username $username \
+                           -parameters $parameters]
+    
+    # More than one, or not found
+    if { [llength $search_result] != 1 } {
+        set result(info_status) no_account
+        return [array get result]
+    }
+
+    # Set up mapping data structure
+    array set map [list]
+    foreach elm [split $params(InfoAttributeMap) ";"] {
+        set elmv [split $elm "="]
+        set oacs_elm [string trim [lindex $elmv 0]]
+        set ldap_attr [string trim [lindex $elmv 1]]
+
+        lappend map($ldap_attr) $oacs_elm
+    }
+    
+    # Map LDAP attributes to OpenACS elements
+    array set user [list]
+    foreach { attribute value } [lindex $search_result 0] {
+        if { [info exists map($attribute)] } {
+            foreach oacs_elm $map($attribute) {
+                if { [lsearch { username authority_id } $oacs_elm] == -1 } { 
+                    set user($oacs_elm) [lindex $value 0]
+                }
+            }
+        }
+    }
+    
+    set result(user_info) [array get user]
+    
+    return [array get result]
+}
+
+
+ad_proc -private auth::ldap::user_info::GetParameters {} {
+    Delete service contract for account registration.
+} {
+    return {
+        BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
+        UsernameAttribute "LDAP attribute to match username against, typically uid"
+        InfoAttributeMap "Mapping attributes from the LDAP entry to OpenACS user information in the format 'element=attrkbute;element=attribute'. Example: first_names=givenName;last_name=sn;email=mail"
+    }
+}
