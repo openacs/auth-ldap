@@ -345,6 +345,7 @@ ad_proc -private auth::ldap::password::RetrievePassword {
     Implements the RetrievePassword operation of the auth_password 
     service contract for LDAP.
 } {
+    return { password_status not_supported }
 }
 
 ad_proc -private auth::ldap::password::ResetPassword {
