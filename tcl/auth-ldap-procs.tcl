@@ -71,8 +71,6 @@ ad_proc -private auth::ldap::after_install {} {} {
     }
 
     set user_info_impl_id [acs_sc::impl::new_from_spec -spec $spec]
-
-    auth::local_ldap::after_install
 }
 
 ad_proc -private auth::ldap::before_uninstall {} {} {
@@ -242,11 +240,39 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     # Default to failure
     set result(auth_status) auth_error
 
-    # Find the user
-    set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
+    
+    # LDAP bind based authentication ?
+    set ldap_bind_p 0
 
-    if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
-        set result(auth_status) ok
+    if {$ldap_bind_p==1} {
+
+	set cn $username
+
+	# The following code splits up the username, given in the form:
+	# user.sub-domain.domain 
+	# into the according ou statements. This is for demonstration purpose only
+
+	# set ldap_list [split $username "."]
+	# set ou_elements [lrange $ldap_list 0 [expr [llength $ldap_list] - 2]]
+	# set cn "[join $ou_elements ",ou="],o=[lindex $ldap_list end]" 
+	
+	set lh [ns_ldap gethandle]
+
+	if {[ns_ldap bind $lh "cn=$cn" "$password"]} {
+	    set result(auth_status) ok
+	}
+
+	ns_ldap disconnect $lh
+	ns_ldap releasehandle $lh
+
+    } else {
+
+	# Find the user
+	set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
+	
+	if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
+	    set result(auth_status) ok
+	}
     }
 
     # We do not check LDAP account status
@@ -301,8 +327,8 @@ ad_proc -private auth::ldap::password::CanResetPassword {
 
 ad_proc -private auth::ldap::password::ChangePassword {
     username
+    old_password
     new_password
-    {old_password ""}
     {parameters {}}
     {authority_id {}}
 } {
@@ -334,17 +360,15 @@ ad_proc -private auth::ldap::password::ChangePassword {
             }
         }
     }
-    
-    if { ![empty_string_p $dn] && ![empty_string_p $userPassword] } {
-	if { ![empty_string_p $old_password] || ![auth::ldap::check_password $userPassword $old_password] } {
-	    set result(password_status) old_password_bad
-	} else {
-	    auth::ldap::set_password -dn $dn -new_password $new_password -parameters $parameters
-	    set result(password_status) ok
-	}
-    }
-	
 
+    if { ![empty_string_p $dn] && ![empty_string_p $userPassword] } {
+        if { ![auth::ldap::check_password $userPassword $old_password] } {
+            set result(password_status) old_password_bad
+        } else {
+            auth::ldap::set_password -dn $dn -new_password $new_password -parameters $parameters
+            set result(password_status) ok
+        }
+    }
     
     return [array get result]
 }
