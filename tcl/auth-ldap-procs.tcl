@@ -321,7 +321,7 @@ ad_proc -private auth::ldap::password::ChangePassword {
                 set userPassword [lindex $value 0]
             }
             dn {
-                set dn [lindex $value 0]
+                set dn $value
             }
         }
     }
