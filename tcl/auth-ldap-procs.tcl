@@ -53,6 +53,40 @@ ad_proc -private auth::ldap::before_uninstall {} {} {
 
 }
 
+ad_proc -private auth::ldap::get_user {
+    {-element ""}
+    {-username:required}
+    {-parameters:required}
+} {
+    Find a user in LDAP by username, and return a list 
+    of { attribute value attribute value ... } or a specific attribute value,
+    if the -element switch is set.
+} { 
+    # Parameters
+    array set params $parameters
+
+    set lh [ns_ldap gethandle ldap]
+    set search_result [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)"]
+    ns_ldap releasehandle $lh
+
+    if { [llength $search_result] != 1 } {
+        return [list]
+    }
+    
+    if { [empty_string_p $element] } {
+        return $search_result
+    }
+
+    foreach { attribute value } [lindex $search_result 0] {
+        if { [string equal $attribute $element] } {
+            # Values are always wrapped in an additional list
+            return [lindex $value 0]
+        }
+    }
+    
+    return {}
+}
+
 
 ad_proc -private auth::ldap::check_password {
     password_from_ldap
@@ -103,6 +137,51 @@ ad_proc -private auth::ldap::check_password {
     return $result
 }
 
+ad_proc -private auth::ldap::set_password {
+    {-dn:required}
+    {-new_password:required}
+    {-parameters:required}
+} {
+    Update an LDAP user's password.
+} {
+    # Parameters
+    array set params $parameters
+
+    set password_hash [string toupper $params(PasswordHash)]
+    set new_password_hashed {}
+    
+    switch $password_hash {
+        MD5 {
+            set new_password_hashed [binary format H* [md5::md5 $new_password]]
+        }
+        SMD5 {
+            set salt [ad_generate_random_string 4]
+            set new_password_hashed [binary format H* [md5::md5 "${new_password}${salt}"]]
+            append new_password_hashed $salt
+        }
+        SHA {
+            set new_password_hashed [binary format H* [ns_sha1 $new_password]]
+        }
+        SSHA {
+            set salt [ad_generate_random_string 4]
+            set new_password_hashed [binary format H* [ns_sha1 "${new_password}${salt}"]]
+            append new_password_hashed $salt
+        }
+        CRYPT {
+            set salt [ad_generate_random_string 2]
+            set new_password_hashed [ns_crypt $new_password $salt]
+        }
+        default {
+            error "Unknown hash method, $password_hash"
+        }
+    }
+        
+    set lh [ns_ldap gethandle ldap]
+    ns_ldap modify $lh $dn mod: userPassword [list "{$password_hash}[base64::encode $new_password_hashed]"]
+    ns_ldap releasehandle $lh
+}
+
+
 #####
 #
 # LDAP Authentication Driver
@@ -118,30 +197,20 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     Implements the Authenticate operation of the auth_authentication 
     service contract for LDAP.
 } {
-    # Default parameters
+    # Parameters
     array set params $parameters
 
     # Default to failure
     set result(auth_status) auth_error
 
     # Find the user
-    set lh [ns_ldap gethandle ldap]
-    set search_result [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)"]
-    ns_ldap releasehandle $lh
+    set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
 
-    if { [llength $search_result] != 1 } {
-        return [array get result]
+    if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
+        set result(auth_status) ok
     }
 
-    foreach { attribute value } [lindex $search_result 0] {
-        if { [string equal $attribute "userPassword"] } {
-            if { [auth::ldap::check_password [lindex $value 0] $password] } {
-                set result(auth_status) ok
-            }
-            break
-        }
-    }
-    
+    # We do not check LDAP account status
     set result(account_status) ok
     
     return [array get result]
@@ -170,7 +239,7 @@ ad_proc -private auth::ldap::password::CanChangePassword {
     Implements the CanChangePassword operation of the auth_password 
     service contract for LDAP.
 } {
-    return 0
+    return 1
 }
 
 ad_proc -private auth::ldap::password::CanRetrievePassword {
@@ -188,7 +257,7 @@ ad_proc -private auth::ldap::password::CanResetPassword {
     Implements the CanResetPassword operation of the auth_password 
     service contract for LDAP.
 } {
-    return 0
+    return 1
 }
 
 ad_proc -private auth::ldap::password::ChangePassword {
@@ -200,7 +269,40 @@ ad_proc -private auth::ldap::password::ChangePassword {
     Implements the ChangePassword operation of the auth_password 
     service contract for LDAP.
 } {
-    # TODO
+    # Parameters
+    array set params $parameters
+
+    set result(password_status) change_error
+
+    # Find the user
+    set search_result [auth::ldap::get_user -username $username -parameters $parameters]
+
+    # More than one, or not found
+    if { [llength $search_result] != 1 } {
+        return [array get result]
+    }
+
+    set userPassword {}
+    set dn {}
+    foreach { attribute value } [lindex $search_result 0] {
+        switch $attribute {
+            userPassword {
+                set userPassword [lindex $value 0]
+            }
+            dn {
+                set dn [lindex $value 0]
+            }
+        }
+    }
+
+    if { ![empty_string_p $dn] && ![empty_string_p $userPassword] } {
+        if { ![auth::ldap::check_password $userPassword $old_password] } {
+            set result(password_status) old_password_bad
+        } else {
+            auth::ldap::set_password -dn $dn -new_password $new_password -parameters $parameters
+            set result(password_status) ok
+        }
+    }
     
     return [array get result]
 }
@@ -221,11 +323,33 @@ ad_proc -private auth::ldap::password::ResetPassword {
     Implements the ResetPassword operation of the auth_password 
     service contract for LDAP.
 } {
+    # Parameters
+    array set params $parameters
+
+    set result(password_status) change_error
+
+    # Find the user
+    set dn [auth::ldap::get_user -username $username -parameters $parameters -element dn]
+
+    if { ![empty_string_p $dn] } {
+        set new_password [ad_generate_random_string]
+
+        auth::ldap::set_password -dn $dn -new_password $new_password -parameters $parameters
+        
+        set result(password_status) ok
+        set result(password) $new_password
+    }
+    
+    return [array get result]
 }
 
 ad_proc -private auth::ldap::password::GetParameters {} {
     Implements the GetParameters operation of the auth_password
     service contract for LDAP.
 } {
-    return [list]
+    return {
+        BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
+        UsernameAttribute "LDAP attribute to match username against, typically uid"
+        PasswordHash "The hash to use when storing passwords. Supported values are MD5, SMD5, SHA, SSHA, and CRYPT."
+    }
 }
