@@ -229,6 +229,7 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     username
     password
     {parameters {}}
+    {authority_id {}}
 } {
     Implements the Authenticate operation of the auth_authentication 
     service contract for LDAP.
@@ -301,6 +302,7 @@ ad_proc -private auth::ldap::password::ChangePassword {
     old_password
     new_password
     {parameters {}}
+    {authority_id {}}
 } {
     Implements the ChangePassword operation of the auth_password 
     service contract for LDAP.
@@ -356,6 +358,7 @@ ad_proc -private auth::ldap::password::RetrievePassword {
 ad_proc -private auth::ldap::password::ResetPassword {
     username
     parameters
+    {authority_id {}}
 } {
     Implements the ResetPassword operation of the auth_password 
     service contract for LDAP.
