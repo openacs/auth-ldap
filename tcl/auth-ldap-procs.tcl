@@ -20,6 +20,7 @@ ad_proc -private auth::ldap::after_install {} {} {
         name "LDAP"
         pretty_name "LDAP"
         aliases {
+            MergeUser auth::ldap::authentication::MergeUser
             Authenticate auth::ldap::authentication::Authenticate
             GetParameters auth::ldap::authentication::GetParameters
         }
@@ -223,6 +224,20 @@ ad_proc -private auth::ldap::set_password {
 # LDAP Authentication Driver
 #
 #####
+
+ad_proc -private auth::ldap::authentication::MergeUser {
+    from_user_id
+    to_user_id
+    {authority_id ""}
+} {
+    Implements the merge operation of the auth_authentication 
+    service contract for local_LDAP.
+} {
+    ns_log Notice "Running ldap MergeUser ..."
+    auth::ldap::delete_user $from_user_id
+    set msg "MergeUser is complete"
+    ns_log Notice $msg
+}
 
 
 ad_proc -private auth::ldap::authentication::Authenticate {
