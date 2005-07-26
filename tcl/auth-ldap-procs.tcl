@@ -255,25 +255,13 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     # Default to failure
     set result(auth_status) auth_error
 
-    
-    # LDAP bind based authentication ?
-    set ldap_bind_p 0
+    if { ![empty_string_p $params(BindAuthenticationP)] && $params(BindAuthenticationP) } {
 
-    if {$ldap_bind_p==1} {
-
-	set cn $username
-
-	# The following code splits up the username, given in the form:
-	# user.sub-domain.domain 
-	# into the according ou statements. This is for demonstration purpose only
-
-	# set ldap_list [split $username "."]
-	# set ou_elements [lrange $ldap_list 0 [expr [llength $ldap_list] - 2]]
-	# set cn "[join $ou_elements ",ou="],o=[lindex $ldap_list end]" 
-	
 	set lh [ns_ldap gethandle]
 
-	if {[ns_ldap bind $lh "cn=$cn" "$password"]} {
+	# First, find the user's FDN, then try an ldap bind with the FDN and supplied password
+	set fdn [lindex [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0] 1]
+	if { ![empty_string_p $fdn] && [ns_ldap bind $lh "$fdn" "$password"]} {
 	    set result(auth_status) ok
 	}
 
@@ -289,7 +277,7 @@ ad_proc -private auth::ldap::authentication::Authenticate {
 	    set result(auth_status) ok
 	}
     }
-
+    
     # We do not check LDAP account status
     set result(account_status) ok
     
@@ -303,6 +291,7 @@ ad_proc -private auth::ldap::authentication::GetParameters {} {
     return {
         BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
         UsernameAttribute "LDAP attribute to match username against, typically uid"
+	BindAuthenticationP "If you set this to 1, the driver will attempt to first find the user's fully distinguished name and then bind as that user. Otherwise, the driver will try to retrieve the password from LDAP and compare against the password provided"	
     }
 }
 
