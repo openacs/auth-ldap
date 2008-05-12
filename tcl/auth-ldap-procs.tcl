@@ -20,6 +20,7 @@ ad_proc -private auth::ldap::after_install {} {} {
         name "LDAP"
         pretty_name "LDAP"
         aliases {
+            MergeUser auth::ldap::authentication::MergeUser
             Authenticate auth::ldap::authentication::Authenticate
             GetParameters auth::ldap::authentication::GetParameters
         }
@@ -111,12 +112,12 @@ ad_proc -private auth::ldap::get_user {
     foreach { attribute value } [lindex $search_result 0] {
         if { [string equal $attribute $element] } {
             # Values are always wrapped in an additional list
-	    # not for dn (roc)
+            # not for dn (roc)
             if [string equal $element "dn"] {
-		return $value
-	    } else {
-		return [lindex $value 0]
-	    }
+                return $value
+            } else {
+                return [lindex $value 0]
+            }
         }
     }
     
@@ -132,8 +133,8 @@ ad_proc -private auth::ldap::check_password {
     Supports MD5, SMD5, SHA, SSHA, and CRYPT.
 
     @param password_from_ldap The value of the userPassword attribute in LDAP, typically something like 
-                              {SSHA}H1W8YiEXl5lwzc7odaU73pNDun9uHRSH.
-           
+    {SSHA}H1W8YiEXl5lwzc7odaU73pNDun9uHRSH.
+    
     @param password_from_user The password entered by the user.
 
     @return 1 if passwords match, 0 otherwise.
@@ -211,7 +212,7 @@ ad_proc -private auth::ldap::set_password {
             error "Unknown hash method, $password_hash"
         }
     }
-        
+    
     set lh [ns_ldap gethandle ldap]
     ns_ldap modify $lh $dn mod: userPassword [list "{$password_hash}[base64::encode $new_password_hashed]"]
     ns_ldap releasehandle $lh
@@ -223,6 +224,20 @@ ad_proc -private auth::ldap::set_password {
 # LDAP Authentication Driver
 #
 #####
+
+ad_proc -private auth::ldap::authentication::MergeUser {
+    from_user_id
+    to_user_id
+    {authority_id ""}
+} {
+    Implements the merge operation of the auth_authentication 
+    service contract for local_LDAP.
+} {
+    ns_log Notice "Running ldap MergeUser ..."
+    auth::ldap::delete_user $from_user_id
+    set msg "MergeUser is complete"
+    ns_log Notice $msg
+}
 
 
 ad_proc -private auth::ldap::authentication::Authenticate {
@@ -240,41 +255,29 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     # Default to failure
     set result(auth_status) auth_error
 
-    
-    # LDAP bind based authentication ?
-    set ldap_bind_p 0
+    if { ![empty_string_p $params(BindAuthenticationP)] && $params(BindAuthenticationP) } {
 
-    if {$ldap_bind_p==1} {
+        set lh [ns_ldap gethandle]
 
-	set cn $username
+        # First, find the user's FDN, then try an ldap bind with the FDN and supplied password
+        set fdn [lindex [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0] 1]
+        if { ![empty_string_p $fdn] && [ns_ldap bind $lh "$fdn" "$password"]} {
+            set result(auth_status) ok
+        }
 
-	# The following code splits up the username, given in the form:
-	# user.sub-domain.domain 
-	# into the according ou statements. This is for demonstration purpose only
-
-	# set ldap_list [split $username "."]
-	# set ou_elements [lrange $ldap_list 0 [expr [llength $ldap_list] - 2]]
-	# set cn "[join $ou_elements ",ou="],o=[lindex $ldap_list end]" 
-	
-	set lh [ns_ldap gethandle]
-
-	if {[ns_ldap bind $lh "cn=$cn" "$password"]} {
-	    set result(auth_status) ok
-	}
-
-	ns_ldap disconnect $lh
-	ns_ldap releasehandle $lh
+        ns_ldap disconnect $lh
+        ns_ldap releasehandle $lh
 
     } else {
 
-	# Find the user
-	set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
-	
-	if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
-	    set result(auth_status) ok
-	}
+        # Find the user
+        set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
+        
+        if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
+            set result(auth_status) ok
+        }
     }
-
+    
     # We do not check LDAP account status
     set result(account_status) ok
     
@@ -288,6 +291,7 @@ ad_proc -private auth::ldap::authentication::GetParameters {} {
     return {
         BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
         UsernameAttribute "LDAP attribute to match username against, typically uid"
+        BindAuthenticationP "If you set this to 1, the driver will attempt to first find the user's fully distinguished name and then bind as that user. Otherwise, the driver will try to retrieve the password from LDAP and compare against the password provided"   
     }
 }
 
