@@ -331,8 +331,8 @@ ad_proc -private auth::ldap::password::CanResetPassword {
 
 ad_proc -private auth::ldap::password::ChangePassword {
     username
-    old_password
     new_password
+    old_password
     {parameters {}}
     {authority_id {}}
 } {
@@ -366,7 +366,30 @@ ad_proc -private auth::ldap::password::ChangePassword {
     }
 
     if { ![empty_string_p $dn] && ![empty_string_p $userPassword] } {
-        if { ![auth::ldap::check_password $userPassword $old_password] } {
+
+        set ok_to_change_password 0
+
+        # TODO: abstract this...
+        if { ![empty_string_p $params(BindAuthenticationP)] && $params(BindAuthenticationP) } {
+
+            set lh [ns_ldap gethandle]
+
+            # First, find the user's FDN, then try an ldap bind with the FDN and supplied password
+            set fdn [lindex [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0] 1]
+            if { ![empty_string_p $fdn] && [ns_ldap bind $lh "$fdn" "$old_password"]} {
+                set ok_to_change_password 1
+            }
+            
+            ns_ldap disconnect $lh
+            ns_ldap releasehandle $lh
+
+        } else {
+            
+            if { [auth::ldap::check_password $userPassword $old_password] } {
+                set ok_to_change_password 1
+            }
+        }
+        if { ! $ok_to_change_password } {
             set result(password_status) old_password_bad
         } else {
             auth::ldap::set_password -dn $dn -new_password $new_password -parameters $parameters
@@ -423,6 +446,8 @@ ad_proc -private auth::ldap::password::GetParameters {} {
         BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
         UsernameAttribute "LDAP attribute to match username against, typically uid"
         PasswordHash "The hash to use when storing passwords. Supported values are MD5, SMD5, SHA, SSHA, and CRYPT."
+        UsernameAttribute "LDAP attribute to match username against, typically uid"
+        BindAuthenticationP "If you set this to 1, the driver will attempt to first find the user's fully distinguished name and then bind as that user. Otherwise, the driver will try to retrieve the password from LDAP and compare against the password provided"   
     }
 }
 
