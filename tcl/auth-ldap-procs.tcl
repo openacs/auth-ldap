@@ -12,6 +12,7 @@ namespace eval auth::ldap::authentication {}
 namespace eval auth::ldap::password {}
 namespace eval auth::ldap::registration {}
 namespace eval auth::ldap::user_info {}
+namespace eval auth::ldap::search {}
 
 ad_proc -private auth::ldap::after_install {} {} {
     set spec {
@@ -72,6 +73,21 @@ ad_proc -private auth::ldap::after_install {} {} {
     }
 
     set user_info_impl_id [acs_sc::impl::new_from_spec -spec $spec]
+
+    set spec {
+        contract_name "auth_search"
+        owner "ldap-auth"
+        name "LDAP"
+        pretty_name "LDAP"
+        aliases {
+            Search auth::ldap::search::Search
+            GetParameters auth::ldap::search::GetParameters
+	    FormInclude auth::ldap::search::FormInclude
+        }
+    }
+
+    set search_impl_id [acs_sc::impl::new_from_spec -spec $spec]
+
 }
 
 ad_proc -private auth::ldap::before_uninstall {} {} {
@@ -612,11 +628,101 @@ ad_proc -private auth::ldap::user_info::GetUserInfo {
 
 
 ad_proc -private auth::ldap::user_info::GetParameters {} {
-    Delete service contract for account registration.
+    Implements the GetParameters operation of the auth_user_info
+    service contract.
 } {
     return {
         BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
         UsernameAttribute "LDAP attribute to match username against, typically uid"
         InfoAttributeMap "Mapping attributes from the LDAP entry to OpenACS user information in the format 'element=attrkbute;element=attribute'. Example: first_names=givenName;last_name=sn;email=mail"
     }
+}
+
+ad_proc -private auth::ldap::search::Search {
+    search_text
+    parameters
+} {
+
+} {
+    # Parameters
+    array set search_terms $search_text
+    unset search_text
+    foreach name [array names search_terms] {
+	set $name $search_terms($name)
+    }
+    array set params $parameters
+    
+    set lh [ns_ldap gethandle ldap]
+    set filter "(&(objectClass=Person)"
+    if {[info exists search_text] && $search_text ne ""} {
+	append filter "(|($params(UsernameAttribute)=*$search_text*)"
+	set name_filter "(|"
+	foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
+	    set attr [lindex [split $attribute_mapping "="] 1]
+	    if {[lsearch {first_names last_name} [lindex [split $attribute_mapping "="] 0]] >= 0} {
+		append name_filter "(|"
+		foreach text [split $search_text] {
+		    append name_filter "($attr=*$text*)"
+		}
+		append name_filter ")"
+	    }
+	}
+	if {$name_filter ne "(&"} {
+	    append filter "${name_filter})"
+	}
+
+	foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
+	    set attr [lindex [split $attribute_mapping "="] 1]
+	    if {[lsearch {first_names last_name} [lindex [split $attribute_mapping "="] 0]] < 0} {
+		append filter "(&"
+		foreach text [split $search_text] {
+		    append filter "($attr=*$text*)"
+		}
+		append filter ")"
+	    }
+	}
+	append filter ")"
+
+    }
+    append filter "(&"    
+    foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
+	set attr [lindex [split $attribute_mapping "="] 1]
+	if {[info exists $attr] && [set $attr] ne ""} {
+	    set attr_search [join [split [set $attr]] "*"]
+	    append filter "($attr=*[set $attr_search]*)"
+	}
+    }
+    append filter ")"
+    append filter ")"
+    ns_log notice "auth::ldap::search::Search: filter = $filter"
+    set matches [ns_ldap search $lh -scope subtree $params(BaseDN) "$filter" cn]
+    ns_ldap releasehandle $lh
+
+    if { [llength $matches] < 1 } {
+        return [list]
+    } else {
+	set usernames [list]
+	foreach user $matches { 
+	    lappend usernames [lindex $user 3] 
+	}
+	return $usernames
+    }
+}
+
+ad_proc -private auth::ldap::search::GetParameters {} {
+    Implements the GetParameters operation of the auth_search
+    service contract.
+} {
+    return {
+        BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
+        UsernameAttribute "LDAP attribute to match username against, typically uid"
+        InfoAttributeMap "Mapping attributes from the LDAP entry to OpenACS user information in the format 'element=attrkbute;element=attribute'. Example: first_names=givenName;last_name=sn;email=mail"
+    }
+}
+
+ad_proc -private auth::ldap::search::FormInclude {} {
+    Implements the FormInclude operation of the auth_search
+    service contract.
+} {
+    return "/packages/auth-ldap/lib/search"
 }
