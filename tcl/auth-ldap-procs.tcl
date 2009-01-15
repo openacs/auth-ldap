@@ -163,7 +163,8 @@ ad_proc -private auth::ldap::check_password {
                 set digest_from_ldap [base64::decode $digest_base64]
                 set hash_from_ldap [string range $digest_from_ldap 0 15]
                 set salt_from_ldap [string range $digest_from_ldap 16 end]
-                set hash_from_user [binary format H* [md5::md5 "${password_from_user}${salt_from_ldap}"]]
+	        package require md5
+                set hash_from_user [md5::md5 -- ${password_from_user}${salt_from_ldap}]
                 if { [string equal $hash_from_ldap $hash_from_user] } {
                     set result 1
                 }
@@ -205,11 +206,13 @@ ad_proc -private auth::ldap::set_password {
     
     switch $password_hash {
         MD5 {
-            set new_password_hashed [binary format H* [md5::md5 $new_password]]
+            package require md5
+            set new_password_hashed [md5::md5 $new_password]
         }
         SMD5 {
+            package require md5
             set salt [ad_generate_random_string 4]
-            set new_password_hashed [binary format H* [md5::md5 "${new_password}${salt}"]]
+            set new_password_hashed [md5::md5 "${new_password}${salt}"]
             append new_password_hashed $salt
         }
         SHA {
