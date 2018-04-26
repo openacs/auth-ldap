@@ -704,7 +704,7 @@ ad_proc -private auth::ldap::search::Search {
     if { [llength $matches] < 1 } {
         return [list]
     } else {
-	set usernames [list]
+	set usernames {}
 	foreach user $matches { 
 	    lappend usernames [lindex $user 3] 
 	}
