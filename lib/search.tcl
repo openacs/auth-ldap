@@ -19,7 +19,7 @@ set auth_search_impl_id [auth::authority::get_element -authority_id $authority_i
 set auth_search_parameters [auth::driver::get_parameter_values -authority_id $authority_id -impl_id $auth_search_impl_id]
 
 array set auth_search_parameters_arr $auth_search_parameters
-set search_attribs {}
+set search_attribs [list]
 # foreach attribute_mapping [split $auth_search_parameters_arr(InfoAttributeMap) ";"] {
 #     set attr [lindex [split $attribute_mapping "="] 1]
 #     set pretty_name [lindex [split $attribute_mapping "="] 0]
@@ -40,7 +40,7 @@ ad_form -extend -name user-search -on_request {
     }
 }
 
-set search_terms {}
+set search_terms [list]
 foreach attr [concat search_text $search_attribs] {
     if {[info exists $attr] && [set $attr] ne ""} {
 	lappend search_terms $attr [set $attr]
@@ -83,7 +83,7 @@ if {[llength $search_terms]} {
 	# does the user have a local account?
 	set local_account_p 0
 	set user_id ""
-	set status {}
+	set status [list]
 	db_0or1row user_exists_p "select user_id from cc_users where upper(username) = upper(:user) and upper(email) = upper(:email)"
 	if {$user_id eq ""} {
 	    set group_member_p 0

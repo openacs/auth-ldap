@@ -523,7 +523,7 @@ ad_proc -private auth::ldap::registration::Register {
     }
     append dn ",$params(BaseDN)"
 
-    set attributes {}
+    set attributes [list]
     foreach elm [split $params(Attributes) ";"] {
         set elmv [split $elm "="]
         set attribute [string trim [lindex $elmv 0]]
@@ -603,7 +603,7 @@ ad_proc -private auth::ldap::user_info::GetUserInfo {
     }
 
     # Set up mapping data structure
-    array set map {}
+    array set map [list]
     foreach elm [split $params(InfoAttributeMap) ";"] {
         set elmv [split $elm "="]
         set oacs_elm [string trim [lindex $elmv 0]]
@@ -613,7 +613,7 @@ ad_proc -private auth::ldap::user_info::GetUserInfo {
     }
     
     # Map LDAP attributes to OpenACS elements
-    array set user {}
+    array set user [list]
     foreach { attribute value } [lindex $search_result 0] {
         if { [info exists map($attribute)] } {
             foreach oacs_elm $map($attribute) {
@@ -704,7 +704,7 @@ ad_proc -private auth::ldap::search::Search {
     if { [llength $matches] < 1 } {
         return [list]
     } else {
-	set usernames {}
+	set usernames [list]
 	foreach user $matches { 
 	    lappend usernames [lindex $user 3] 
 	}
