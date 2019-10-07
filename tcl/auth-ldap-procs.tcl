@@ -121,15 +121,15 @@ ad_proc -private auth::ldap::get_user {
         return [list]
     }
     
-    if { [empty_string_p $element] } {
+    if { $element eq "" } {
         return $search_result
     }
 
     foreach { attribute value } [lindex $search_result 0] {
-        if { [string equal $attribute $element] } {
+        if {$attribute eq $element} {
             # Values are always wrapped in an additional list
             # not for dn (roc)
-            if [string equal $element "dn"] {
+            if {$element eq "dn"} {
                 return $value
             } else {
                 return [lindex $value 0]
@@ -165,7 +165,7 @@ ad_proc -private auth::ldap::check_password {
                 set salt_from_ldap [string range $digest_from_ldap 16 end]
 	        package require md5
                 set hash_from_user [md5::md5 -- ${password_from_user}${salt_from_ldap}]
-                if { [string equal $hash_from_ldap $hash_from_user] } {
+                if {$hash_from_ldap eq $hash_from_user} {
                     set result 1
                 }
             }
@@ -174,7 +174,7 @@ ad_proc -private auth::ldap::check_password {
                 set hash_from_ldap [string range $digest_from_ldap 0 19]
                 set salt_from_ldap [string range $digest_from_ldap 20 end]
                 set hash_from_user [binary format H* [ns_sha1 "${password_from_user}${salt_from_ldap}"]]
-                if { [string equal $hash_from_ldap $hash_from_user] } {
+                if {$hash_from_ldap eq $hash_from_user} {
                     set result 1
                 }
             }
@@ -182,7 +182,7 @@ ad_proc -private auth::ldap::check_password {
                 set hash_from_ldap $digest_base64
                 set salt_from_ldap [string range $digest_base64 0 1]
                 set hash_from_user [ns_crypt $password_from_user $salt_from_ldap]
-                if { [string equal $hash_from_ldap $hash_from_user] } {
+                if {$hash_from_ldap eq $hash_from_user} {
                     set result 1
                 }
             }
@@ -274,13 +274,13 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     # Default to failure
     set result(auth_status) auth_error
 
-    if { ![empty_string_p $params(BindAuthenticationP)] && $params(BindAuthenticationP) } {
+    if { $params(BindAuthenticationP) ne "" && $params(BindAuthenticationP) } {
 
         set lh [ns_ldap gethandle]
 
         # First, find the user's FDN, then try an ldap bind with the FDN and supplied password
-        set fdn [lindex [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0] 1]
-        if { ![empty_string_p $fdn] && [ns_ldap bind $lh "$fdn" "$password"]} {
+        set fdn [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0 1]
+        if { $fdn ne "" && [ns_ldap bind $lh $fdn $password]} {
             set result(auth_status) ok
         }
 
@@ -292,7 +292,7 @@ ad_proc -private auth::ldap::authentication::Authenticate {
         # Find the user
         set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
         
-        if { ![empty_string_p $userPassword] && [auth::ldap::check_password $userPassword $password] } {
+        if { $userPassword ne "" && [auth::ldap::check_password $userPassword $password] } {
             set result(auth_status) ok
         }
     }
@@ -384,18 +384,18 @@ ad_proc -private auth::ldap::password::ChangePassword {
         }
     }
 
-    if { ![empty_string_p $dn] && ![empty_string_p $userPassword] } {
+    if { $dn ne "" && $userPassword ne "" } {
 
         set ok_to_change_password 0
 
         # TODO: abstract this...
-        if { ![empty_string_p $params(BindAuthenticationP)] && $params(BindAuthenticationP) } {
+        if { $params(BindAuthenticationP) ne "" && $params(BindAuthenticationP) } {
 
             set lh [ns_ldap gethandle]
 
             # First, find the user's FDN, then try an ldap bind with the FDN and supplied password
-            set fdn [lindex [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0] 1]
-            if { ![empty_string_p $fdn] && [ns_ldap bind $lh "$fdn" "$old_password"]} {
+            set fdn [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0 1]
+            if { $fdn ne "" && [ns_ldap bind $lh $fdn $old_password]} {
                 set ok_to_change_password 1
             }
             
@@ -445,7 +445,7 @@ ad_proc -private auth::ldap::password::ResetPassword {
     # Find the user
     set dn [auth::ldap::get_user -username $username -parameters $parameters -element dn]
 
-    if { ![empty_string_p $dn] } {
+    if { $dn ne "" } {
         set new_password [ad_generate_random_string]
 
         auth::ldap::set_password -dn $dn -new_password $new_password -parameters $parameters
@@ -617,7 +617,7 @@ ad_proc -private auth::ldap::user_info::GetUserInfo {
     foreach { attribute value } [lindex $search_result 0] {
         if { [info exists map($attribute)] } {
             foreach oacs_elm $map($attribute) {
-                if { [lsearch { username authority_id } $oacs_elm] == -1 } { 
+                if {$oacs_elm ni { username authority_id }} { 
                     set user($oacs_elm) [lindex $value 0]
                 }
             }
@@ -698,7 +698,7 @@ ad_proc -private auth::ldap::search::Search {
     append filter ")"
     append filter ")"
     ns_log notice "auth::ldap::search::Search: filter = $filter"
-    set matches [ns_ldap search $lh -scope subtree $params(BaseDN) "$filter" cn]
+    set matches [ns_ldap search $lh -scope subtree $params(BaseDN) $filter cn]
     ns_ldap releasehandle $lh
 
     if { [llength $matches] < 1 } {
