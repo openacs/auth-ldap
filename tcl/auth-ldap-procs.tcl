@@ -111,8 +111,15 @@ ad_proc -private auth::ldap::get_user {
     array set params $parameters
 
     set lh [ns_ldap gethandle ldap]
-    set search_result [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)"]
-    ns_ldap releasehandle $lh
+
+    ad_try {
+        ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)"
+    } on ok {search_result} {
+    } on error {errorMsg} {
+        error "ns_ldap search returns error: $errorMsg"
+    } finally {
+        ns_ldap releasehandle $lh
+    }
 
     if { [llength $search_result] != 1 } {
         return [list]
@@ -230,8 +237,15 @@ ad_proc -private auth::ldap::set_password {
     }
 
     set lh [ns_ldap gethandle ldap]
-    ns_ldap modify $lh $dn mod: userPassword [list "{$password_hash}[base64::encode $new_password_hashed]"]
-    ns_ldap releasehandle $lh
+
+    ad_try {
+        ns_ldap modify $lh $dn mod: userPassword [list "{$password_hash}[base64::encode $new_password_hashed]"]
+    } on ok {result} {
+    } on error {errorMsg} {
+        error "ns_ldap modify returns error: $errorMsg"
+    } finally {
+        ns_ldap releasehandle $lh
+    }
 }
 
 
@@ -255,6 +269,32 @@ ad_proc -private auth::ldap::authentication::MergeUser {
     ns_log Notice $msg
 }
 
+ad_proc -private auth::ldap::bind {
+    lh
+    fdn
+    password
+} {
+
+    Call "ns_ldap bind" with provided ldap handle, fdn and password.
+    In case the provided fdn is empty (result of a previous search
+    command), or the "ns_ldap bind" raises an error, this function
+    returns 0. Otherwise, it checks the password and reurns the
+    boolean result
+
+    @return boolean result
+} {
+    set result 0
+    if { $fdn ne ""} {
+        try {
+            ns_ldap bind $lh $fdn $password
+        } on error {errorMsg} {
+            ns_log warning "ns_ldap bind returns error: $errorMsg"
+        } on ok {
+            set result 1
+        }
+    }
+    return result
+}
 
 ad_proc -private auth::ldap::authentication::Authenticate {
     username
@@ -279,16 +319,23 @@ ad_proc -private auth::ldap::authentication::Authenticate {
         # First, find the user's FDN, then try an ldap bind with the
         # FDN and supplied password.
         #
-        set ldap_search_result [ns_ldap search $lh -scope subtree \
-                                    $params(BaseDN) \
-                                    "($params(UsernameAttribute)=$username)" dn]
-        set fdn [lindex $ldap_search_result 0 1]
-        if { $fdn ne "" && [ns_ldap bind $lh $fdn $password]} {
-            set result(auth_status) ok
-        }
+        ad_try {
+            ns_ldap search $lh -scope subtree \
+                $params(BaseDN) \
+                "($params(UsernameAttribute)=$username)" dn
 
-        ns_ldap disconnect $lh
-        ns_ldap releasehandle $lh
+        } on ok {ldap_search_result} {
+            if {[auth::ldap::bind $lh [lindex $ldap_search_result 0 1] $password]} {
+                set result(auth_status) ok
+            }
+
+        } on error {errorMsg} {
+            error "ns_ldap search returns error: $errorMsg"
+
+        } finally {
+            ns_ldap disconnect $lh
+            ns_ldap releasehandle $lh
+        }
 
     } else {
 
@@ -398,19 +445,29 @@ ad_proc -private auth::ldap::password::ChangePassword {
         if { $params(BindAuthenticationP) ne "" && $params(BindAuthenticationP) } {
 
             set lh [ns_ldap gethandle]
-            #
-            # First, find the user's FDN, then try an ldap bind with
-            # the FDN and supplied password.
-            #
-            set ldap_search_result [ns_ldap search $lh -scope subtree \
-                                        $params(BaseDN) "($params(UsernameAttribute)=$username)" dn]
-            set fdn [lindex $ldap_search_result 0 1]
-            if { $fdn ne "" && [ns_ldap bind $lh $fdn $old_password]} {
-                set ok_to_change_password 1
-            }
 
-            ns_ldap disconnect $lh
-            ns_ldap releasehandle $lh
+            #
+            # First, find the user's FDN, then try an ldap bind with the
+            # FDN and supplied password.
+            #
+            ad_try {
+                ns_ldap search $lh -scope subtree \
+                    $params(BaseDN) \
+                    "($params(UsernameAttribute)=$username)" dn
+
+            } on ok {ldap_search_result} {
+
+                if {[auth::ldap::bind $lh [lindex $ldap_search_result 0 1] $password]} {
+                    set ok_to_change_password 1
+                }
+
+            } on error {errorMsg} {
+                error "ns_ldap search returns error: $errorMsg"
+
+            } finally {
+                ns_ldap disconnect $lh
+                ns_ldap releasehandle $lh
+            }
 
         } else {
 
@@ -548,20 +605,25 @@ ad_proc -private auth::ldap::registration::Register {
 
     # Create the account
     set lh [ns_ldap gethandle ldap]
-    with_catch errmsg {
-        ns_log Notice "LDAP: Adding user: [concat ns_ldap add [list $lh] [list $dn] $attributes]"
-        eval [concat ns_ldap add [list $lh] [list $dn] $attributes]
+    ns_log Notice "LDAP: Adding user: [concat ns_ldap add [list $lh] [list $dn] $attributes]"
+
+    ad_try {
+        ns_ldap add $lh $dn {*}$attributes
+
+    } on ok {result} {
+    } on error {errorMsg} {
+        error "ns_ldap add returns error: $errorMsg $::errorInfo"
+
+    } finally {
         ns_ldap releasehandle $lh
-    } {
-        ns_ldap releasehandle $lh
-        global errorInfo
-        error $errmsg $errorInfo
     }
 
-    auth::ldap::set_password -dn $dn -new_password $password -parameters $parameters
+    auth::ldap::set_password \
+        -dn $dn \
+        -new_password $password \
+        -parameters $parameters
 
     set result(creation_status) "ok"
-
     return [array get result]
 }
 
@@ -708,11 +770,19 @@ ad_proc -private auth::ldap::search::Search {
     append filter ")"
     append filter ")"
     ns_log notice "auth::ldap::search::Search: filter = $filter"
-    set matches [ns_ldap search $lh -scope subtree $params(BaseDN) $filter cn]
-    ns_ldap releasehandle $lh
+
+    ad_try {
+        ns_ldap search $lh -scope subtree $params(BaseDN) $filter cn
+
+    } on ok {matches} {
+    } on error {errorMsg} {
+        error "ns_ldap search returns error: $errorMsg"
+    } finally {
+        ns_ldap releasehandle $lh
+    }
 
     if { [llength $matches] < 1 } {
-        return [list]
+        return {}
     } else {
         set usernames [list]
         foreach user $matches {
