@@ -5,12 +5,16 @@
 # ADP level
 # should get authority_id, return_url passed in.
 
-ad_form -name user-search -export {authority_id object_id} -html {id "user-search"} -has_submit 1 -form {
+ad_form -name user-search \
+    -export {authority_id object_id} \
+    -html {id "user-search"} \
+    -has_submit 1 -form {
     {search_text:text(text),optional
         {label "Search"}
     }
     {search_btn:text(button) {label ""} {value "Search"} {html {onclick {document.getElementById('searchform').style.display='';document.getElementById('user-search').submit()}}}}
 }
+
 if {![info exists orderby]} {
     set orderby ""
 }
@@ -55,7 +59,7 @@ foreach attr [concat search_text $search_attribs] {
 if {[llength $search_terms]} {
     set matches [auth::ldap::search::Search $search_terms $auth_search_parameters]
 
-     set user_info_impl_id [auth::authority::get_element -authority_id $authority_id -element "user_info_impl_id"]
+    set user_info_impl_id [auth::authority::get_element -authority_id $authority_id -element "user_info_impl_id"]
     set user_info_parameters [auth::driver::get_parameter_values \
                                   -authority_id $authority_id \
                                   -impl_id $user_info_impl_id]

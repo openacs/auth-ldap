@@ -93,11 +93,8 @@ ad_proc -private auth::ldap::after_install {} {} {
 ad_proc -private auth::ldap::before_uninstall {} {} {
 
     acs_sc::impl::delete -contract_name "auth_authentication" -impl_name "LDAP"
-
     acs_sc::impl::delete -contract_name "auth_password" -impl_name "LDAP"
-
     acs_sc::impl::delete -contract_name "auth_registration" -impl_name "LDAP"
-
     acs_sc::impl::delete -contract_name "auth_user_info" -impl_name "LDAP"
 }
 
@@ -278,8 +275,14 @@ ad_proc -private auth::ldap::authentication::Authenticate {
 
         set lh [ns_ldap gethandle]
 
-        # First, find the user's FDN, then try an ldap bind with the FDN and supplied password
-        set fdn [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0 1]
+        #
+        # First, find the user's FDN, then try an ldap bind with the
+        # FDN and supplied password.
+        #
+        set ldap_search_result [ns_ldap search $lh -scope subtree \
+                                    $params(BaseDN) \
+                                    "($params(UsernameAttribute)=$username)" dn]
+        set fdn [lindex $ldap_search_result 0 1]
         if { $fdn ne "" && [ns_ldap bind $lh $fdn $password]} {
             set result(auth_status) ok
         }
@@ -290,8 +293,10 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     } else {
 
         # Find the user
-        set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
-
+        set userPassword [auth::ldap::get_user \
+                              -username $username \
+                              -parameters $parameters \
+                              -element "userPassword"]
         if { $userPassword ne "" && [auth::ldap::check_password $userPassword $password] } {
             set result(auth_status) ok
         }
@@ -387,14 +392,19 @@ ad_proc -private auth::ldap::password::ChangePassword {
     if { $dn ne "" && $userPassword ne "" } {
 
         set ok_to_change_password 0
-
-        # TODO: abstract this...
+        #
+        # TODO: abstract this... -> remove duplicated code!
+        #
         if { $params(BindAuthenticationP) ne "" && $params(BindAuthenticationP) } {
 
             set lh [ns_ldap gethandle]
-
-            # First, find the user's FDN, then try an ldap bind with the FDN and supplied password
-            set fdn [lindex [ns_ldap search $lh -scope subtree $params(BaseDN) "($params(UsernameAttribute)=$username)" dn] 0 1]
+            #
+            # First, find the user's FDN, then try an ldap bind with
+            # the FDN and supplied password.
+            #
+            set ldap_search_result [ns_ldap search $lh -scope subtree \
+                                        $params(BaseDN) "($params(UsernameAttribute)=$username)" dn]
+            set fdn [lindex $ldap_search_result 0 1]
             if { $fdn ne "" && [ns_ldap bind $lh $fdn $old_password]} {
                 set ok_to_change_password 1
             }
