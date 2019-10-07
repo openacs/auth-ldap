@@ -82,7 +82,7 @@ ad_proc -private auth::ldap::after_install {} {} {
         aliases {
             Search auth::ldap::search::Search
             GetParameters auth::ldap::search::GetParameters
-	    FormInclude auth::ldap::search::FormInclude
+            FormInclude auth::ldap::search::FormInclude
         }
     }
 
@@ -106,10 +106,10 @@ ad_proc -private auth::ldap::get_user {
     {-username:required}
     {-parameters:required}
 } {
-    Find a user in LDAP by username, and return a list 
+    Find a user in LDAP by username, and return a list
     of { attribute value attribute value ... } or a specific attribute value,
     if the -element switch is set.
-} { 
+} {
     # Parameters
     array set params $parameters
 
@@ -120,7 +120,7 @@ ad_proc -private auth::ldap::get_user {
     if { [llength $search_result] != 1 } {
         return [list]
     }
-    
+
     if { $element eq "" } {
         return $search_result
     }
@@ -136,7 +136,7 @@ ad_proc -private auth::ldap::get_user {
             }
         }
     }
-    
+
     return {}
 }
 
@@ -148,9 +148,9 @@ ad_proc -private auth::ldap::check_password {
     Checks a password from LDAP and returns 1 for match, 0 for no match or problem verifying.
     Supports MD5, SMD5, SHA, SSHA, and CRYPT.
 
-    @param password_from_ldap The value of the userPassword attribute in LDAP, typically something like 
+    @param password_from_ldap The value of the userPassword attribute in LDAP, typically something like
     {SSHA}H1W8YiEXl5lwzc7odaU73pNDun9uHRSH.
-    
+
     @param password_from_user The password entered by the user.
 
     @return 1 if passwords match, 0 otherwise.
@@ -163,7 +163,7 @@ ad_proc -private auth::ldap::check_password {
                 set digest_from_ldap [base64::decode $digest_base64]
                 set hash_from_ldap [string range $digest_from_ldap 0 15]
                 set salt_from_ldap [string range $digest_from_ldap 16 end]
-	        package require md5
+                package require md5
                 set hash_from_user [md5::md5 -- ${password_from_user}${salt_from_ldap}]
                 if {$hash_from_ldap eq $hash_from_user} {
                     set result 1
@@ -203,7 +203,7 @@ ad_proc -private auth::ldap::set_password {
 
     set password_hash [string toupper $params(PasswordHash)]
     set new_password_hashed {}
-    
+
     switch $password_hash {
         MD5 {
             package require md5
@@ -231,7 +231,7 @@ ad_proc -private auth::ldap::set_password {
             error "Unknown hash method, $password_hash"
         }
     }
-    
+
     set lh [ns_ldap gethandle ldap]
     ns_ldap modify $lh $dn mod: userPassword [list "{$password_hash}[base64::encode $new_password_hashed]"]
     ns_ldap releasehandle $lh
@@ -249,7 +249,7 @@ ad_proc -private auth::ldap::authentication::MergeUser {
     to_user_id
     {authority_id ""}
 } {
-    Implements the merge operation of the auth_authentication 
+    Implements the merge operation of the auth_authentication
     service contract for local_LDAP.
 } {
     ns_log Notice "Running ldap MergeUser ..."
@@ -265,7 +265,7 @@ ad_proc -private auth::ldap::authentication::Authenticate {
     {parameters {}}
     {authority_id {}}
 } {
-    Implements the Authenticate operation of the auth_authentication 
+    Implements the Authenticate operation of the auth_authentication
     service contract for LDAP.
 } {
     # Parameters
@@ -291,26 +291,26 @@ ad_proc -private auth::ldap::authentication::Authenticate {
 
         # Find the user
         set userPassword [auth::ldap::get_user -username $username -parameters $parameters -element "userPassword"]
-        
+
         if { $userPassword ne "" && [auth::ldap::check_password $userPassword $password] } {
             set result(auth_status) ok
         }
     }
-    
+
     # We do not check LDAP account status
     set result(account_status) ok
-    
+
     return [array get result]
 }
 
 ad_proc -private auth::ldap::authentication::GetParameters {} {
-    Implements the GetParameters operation of the auth_authentication 
+    Implements the GetParameters operation of the auth_authentication
     service contract for LDAP.
 } {
     return {
         BaseDN "Base DN when searching for users. Typically something like 'o=Your Org Name', or 'dc=yourdomain,dc=com'"
         UsernameAttribute "LDAP attribute to match username against, typically uid"
-        BindAuthenticationP "If you set this to 1, the driver will attempt to first find the user's fully distinguished name and then bind as that user. Otherwise, the driver will try to retrieve the password from LDAP and compare against the password provided"   
+        BindAuthenticationP "If you set this to 1, the driver will attempt to first find the user's fully distinguished name and then bind as that user. Otherwise, the driver will try to retrieve the password from LDAP and compare against the password provided"
     }
 }
 
@@ -324,7 +324,7 @@ ad_proc -private auth::ldap::authentication::GetParameters {} {
 ad_proc -private auth::ldap::password::CanChangePassword {
     {parameters ""}
 } {
-    Implements the CanChangePassword operation of the auth_password 
+    Implements the CanChangePassword operation of the auth_password
     service contract for LDAP.
 } {
     return 1
@@ -333,7 +333,7 @@ ad_proc -private auth::ldap::password::CanChangePassword {
 ad_proc -private auth::ldap::password::CanRetrievePassword {
     {parameters ""}
 } {
-    Implements the CanRetrievePassword operation of the auth_password 
+    Implements the CanRetrievePassword operation of the auth_password
     service contract for LDAP.
 } {
     return 0
@@ -342,7 +342,7 @@ ad_proc -private auth::ldap::password::CanRetrievePassword {
 ad_proc -private auth::ldap::password::CanResetPassword {
     {parameters ""}
 } {
-    Implements the CanResetPassword operation of the auth_password 
+    Implements the CanResetPassword operation of the auth_password
     service contract for LDAP.
 } {
     return 1
@@ -355,7 +355,7 @@ ad_proc -private auth::ldap::password::ChangePassword {
     {parameters {}}
     {authority_id {}}
 } {
-    Implements the ChangePassword operation of the auth_password 
+    Implements the ChangePassword operation of the auth_password
     service contract for LDAP.
 } {
     # Parameters
@@ -398,12 +398,12 @@ ad_proc -private auth::ldap::password::ChangePassword {
             if { $fdn ne "" && [ns_ldap bind $lh $fdn $old_password]} {
                 set ok_to_change_password 1
             }
-            
+
             ns_ldap disconnect $lh
             ns_ldap releasehandle $lh
 
         } else {
-            
+
             if { [auth::ldap::check_password $userPassword $old_password] } {
                 set ok_to_change_password 1
             }
@@ -415,7 +415,7 @@ ad_proc -private auth::ldap::password::ChangePassword {
             set result(password_status) ok
         }
     }
-    
+
     return [array get result]
 }
 
@@ -423,7 +423,7 @@ ad_proc -private auth::ldap::password::RetrievePassword {
     username
     parameters
 } {
-    Implements the RetrievePassword operation of the auth_password 
+    Implements the RetrievePassword operation of the auth_password
     service contract for LDAP.
 } {
     return { password_status not_supported }
@@ -434,7 +434,7 @@ ad_proc -private auth::ldap::password::ResetPassword {
     parameters
     {authority_id {}}
 } {
-    Implements the ResetPassword operation of the auth_password 
+    Implements the ResetPassword operation of the auth_password
     service contract for LDAP.
 } {
     # Parameters
@@ -449,11 +449,11 @@ ad_proc -private auth::ldap::password::ResetPassword {
         set new_password [ad_generate_random_string]
 
         auth::ldap::set_password -dn $dn -new_password $new_password -parameters $parameters
-        
+
         set result(password_status) ok
         set result(password) $new_password
     }
-    
+
     return [array get result]
 }
 
@@ -466,7 +466,7 @@ ad_proc -private auth::ldap::password::GetParameters {} {
         UsernameAttribute "LDAP attribute to match username against, typically uid"
         PasswordHash "The hash to use when storing passwords. Supported values are MD5, SMD5, SHA, SSHA, and CRYPT."
         UsernameAttribute "LDAP attribute to match username against, typically uid"
-        BindAuthenticationP "If you set this to 1, the driver will attempt to first find the user's fully distinguished name and then bind as that user. Otherwise, the driver will try to retrieve the password from LDAP and compare against the password provided"   
+        BindAuthenticationP "If you set this to 1, the driver will attempt to first find the user's fully distinguished name and then bind as that user. Otherwise, the driver will try to retrieve the password from LDAP and compare against the password provided"
     }
 }
 
@@ -549,7 +549,7 @@ ad_proc -private auth::ldap::registration::Register {
     }
 
     auth::ldap::set_password -dn $dn -new_password $password -parameters $parameters
-    
+
     set result(creation_status) "ok"
 
     return [array get result]
@@ -595,7 +595,7 @@ ad_proc -private auth::ldap::user_info::GetUserInfo {
     set search_result [auth::ldap::get_user \
                            -username $username \
                            -parameters $parameters]
-    
+
     # More than one, or not found
     if { [llength $search_result] != 1 } {
         set result(info_status) no_account
@@ -611,21 +611,21 @@ ad_proc -private auth::ldap::user_info::GetUserInfo {
 
         lappend map($ldap_attr) $oacs_elm
     }
-    
+
     # Map LDAP attributes to OpenACS elements
     array set user [list]
     foreach { attribute value } [lindex $search_result 0] {
         if { [info exists map($attribute)] } {
             foreach oacs_elm $map($attribute) {
-                if {$oacs_elm ni { username authority_id }} { 
+                if {$oacs_elm ni { username authority_id }} {
                     set user($oacs_elm) [lindex $value 0]
                 }
             }
         }
     }
-    
+
     set result(user_info) [array get user]
-    
+
     return [array get result]
 }
 
@@ -651,49 +651,49 @@ ad_proc -private auth::ldap::search::Search {
     array set search_terms $search_text
     unset search_text
     foreach name [array names search_terms] {
-	set $name $search_terms($name)
+        set $name $search_terms($name)
     }
     array set params $parameters
-    
+
     set lh [ns_ldap gethandle ldap]
     set filter "(&(objectClass=Person)"
     if {[info exists search_text] && $search_text ne ""} {
-	append filter "(|($params(UsernameAttribute)=*$search_text*)"
-	set name_filter "(|"
-	foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
-	    set attr [lindex [split $attribute_mapping "="] 1]
-	    if {[lsearch {first_names last_name} [lindex [split $attribute_mapping "="] 0]] >= 0} {
-		append name_filter "(|"
-		foreach text [split $search_text] {
-		    append name_filter "($attr=*$text*)"
-		}
-		append name_filter ")"
-	    }
-	}
-	if {$name_filter ne "(&"} {
-	    append filter "${name_filter})"
-	}
+        append filter "(|($params(UsernameAttribute)=*$search_text*)"
+        set name_filter "(|"
+        foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
+            set attr [lindex [split $attribute_mapping "="] 1]
+            if {[lsearch {first_names last_name} [lindex [split $attribute_mapping "="] 0]] >= 0} {
+                append name_filter "(|"
+                foreach text [split $search_text] {
+                    append name_filter "($attr=*$text*)"
+                }
+                append name_filter ")"
+            }
+        }
+        if {$name_filter ne "(&"} {
+            append filter "${name_filter})"
+        }
 
-	foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
-	    set attr [lindex [split $attribute_mapping "="] 1]
-	    if {[lsearch {first_names last_name} [lindex [split $attribute_mapping "="] 0]] < 0} {
-		append filter "(&"
-		foreach text [split $search_text] {
-		    append filter "($attr=*$text*)"
-		}
-		append filter ")"
-	    }
-	}
-	append filter ")"
+        foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
+            set attr [lindex [split $attribute_mapping "="] 1]
+            if {[lsearch {first_names last_name} [lindex [split $attribute_mapping "="] 0]] < 0} {
+                append filter "(&"
+                foreach text [split $search_text] {
+                    append filter "($attr=*$text*)"
+                }
+                append filter ")"
+            }
+        }
+        append filter ")"
 
     }
-    append filter "(&"    
+    append filter "(&"
     foreach attribute_mapping [split $params(InfoAttributeMap) ";"] {
-	set attr [lindex [split $attribute_mapping "="] 1]
-	if {[info exists $attr] && [set $attr] ne ""} {
-	    set attr_search [join [split [set $attr]] "*"]
-	    append filter "($attr=*[set $attr_search]*)"
-	}
+        set attr [lindex [split $attribute_mapping "="] 1]
+        if {[info exists $attr] && [set $attr] ne ""} {
+            set attr_search [join [split [set $attr]] "*"]
+            append filter "($attr=*[set $attr_search]*)"
+        }
     }
     append filter ")"
     append filter ")"
@@ -704,11 +704,11 @@ ad_proc -private auth::ldap::search::Search {
     if { [llength $matches] < 1 } {
         return [list]
     } else {
-	set usernames [list]
-	foreach user $matches { 
-	    lappend usernames [lindex $user 3] 
-	}
-	return $usernames
+        set usernames [list]
+        foreach user $matches {
+            lappend usernames [lindex $user 3]
+        }
+        return $usernames
     }
 }
 
@@ -729,3 +729,10 @@ ad_proc -private auth::ldap::search::FormInclude {} {
 } {
     return "/packages/auth-ldap/lib/search"
 }
+
+#
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:
