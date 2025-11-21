@@ -278,7 +278,7 @@ ad_proc -private auth::ldap::bind {
     Call "ns_ldap bind" with provided ldap handle, fdn and password.
     In case the provided fdn is empty (result of a previous search
     command), or the "ns_ldap bind" raises an error, this function
-    returns 0. Otherwise, it checks the password and reurns the
+    returns 0. Otherwise, it checks the password and returns the
     boolean result
 
     @return boolean result
