@@ -162,9 +162,12 @@ ad_proc -private auth::ldap::check_password {
     set result 0
 
     if { [regexp "{(.*)}(.*)" $password_from_ldap match cypher digest_base64] } {
+        # Match Tcllib's decoder for Base64 hashes: discard nonalphabet
+        # characters (including padding), but reject a trailing single sextet.
         switch [string toupper $cypher] {
             MD5 - SMD5 {
-                set digest_from_ldap [base64::decode $digest_base64]
+                set digest_from_ldap [ns_base64decode -binary -strict -- \
+                                          [regsub -all {[^A-Za-z0-9+/]} $digest_base64 ""]]
                 set hash_from_ldap [string range $digest_from_ldap 0 15]
                 set salt_from_ldap [string range $digest_from_ldap 16 end]
                 package require md5
@@ -174,7 +177,8 @@ ad_proc -private auth::ldap::check_password {
                 }
             }
             SHA - SSHA {
-                set digest_from_ldap [base64::decode $digest_base64]
+                set digest_from_ldap [ns_base64decode -binary -strict -- \
+                                          [regsub -all {[^A-Za-z0-9+/]} $digest_base64 ""]]
                 set hash_from_ldap [string range $digest_from_ldap 0 19]
                 set salt_from_ldap [string range $digest_from_ldap 20 end]
                 set hash_from_user [binary format H* [ns_sha1 "${password_from_user}${salt_from_ldap}"]]
@@ -239,7 +243,7 @@ ad_proc -private auth::ldap::set_password {
     set lh [ns_ldap gethandle ldap]
 
     ad_try {
-        ns_ldap modify $lh $dn mod: userPassword [list "{$password_hash}[base64::encode $new_password_hashed]"]
+        ns_ldap modify $lh $dn mod: userPassword [list "{$password_hash}[ns_base64encode -binary -- $new_password_hashed]"]
     } on ok {result} {
     } on error {errorMsg} {
         error "ns_ldap modify returns error: $errorMsg"
